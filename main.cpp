@@ -23,6 +23,8 @@
 #include <QDirIterator>
 #include <QImage>
 #include <QPainter>
+#include <QJsonObject>
+#include <QJsonDocument>
 
 auto main(int argc, char *argv[]) -> int
 {
@@ -42,6 +44,7 @@ auto main(int argc, char *argv[]) -> int
 
     // Find all relevant SVG files
     QVector<QImage> images;
+    QVector<QString> names;
     foreach(auto directory, positionalArguments)
     {
         QDirIterator fileIterator(directory);
@@ -52,6 +55,7 @@ auto main(int argc, char *argv[]) -> int
             {
                 qDebug() << "Loading SVG file" << fileIterator.filePath();
                 images << QImage(fileIterator.filePath());
+                names << fileIterator.fileName().section(".", 0, -2);
             }
         }
     }
@@ -85,6 +89,7 @@ auto main(int argc, char *argv[]) -> int
     QPainter painter(&spriteSheet);
     int xOffset = 0;
     int yOffset = 0;
+    QJsonObject obj;
     for(int i=0; i<numImages; i++)
     {
         auto row = i / numColumns;
@@ -96,14 +101,31 @@ auto main(int argc, char *argv[]) -> int
         }
 
         painter.drawImage(xOffset, yOffset, images[i]);
+        QJsonObject jsonObj;
+        jsonObj.insert(QStringLiteral("width"), images[i].width());
+        jsonObj.insert(QStringLiteral("height"), images[i].height());
+        jsonObj.insert(QStringLiteral("x"), xOffset);
+        jsonObj.insert(QStringLiteral("y"), yOffset);
+        jsonObj.insert(QStringLiteral("pixelRatio"), 1);
+        obj.insert(names[i], jsonObj);
+
         xOffset += images[i].width();
         if (col == numColumns-1)
         {
             yOffset += rowHeight[row];
         }
+
     }
     painter.end();
     spriteSheet.save("x.png");
+
+
+    QJsonDocument doc;
+    doc.setObject(obj);
+
+    QFile file("x.json");
+    file.open(QFile::WriteOnly);
+    file.write(doc.toJson());
 
     return 0;
 }
