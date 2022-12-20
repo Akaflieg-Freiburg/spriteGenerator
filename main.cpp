@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2019-2022 by Stefan Kebekus                             *
+ *   Copyright (C) 2022 by Stefan Kebekus                                  *
  *   stefan.kebekus@gmail.com                                              *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -39,10 +39,6 @@ auto main(int argc, char *argv[]) -> int
     parser.addPositionalArgument(QStringLiteral("[directory]"), QCoreApplication::translate("main", "Directory with SVG files."));
     parser.process(app);
     auto positionalArguments = parser.positionalArguments();
-    if (positionalArguments.length() > 1)
-    {
-        parser.showHelp();
-    }
 
     // Find all relevant SVG files
     QVector<QImage> images;
@@ -71,7 +67,7 @@ auto main(int argc, char *argv[]) -> int
     QVector<int> rowWidth(numRows, 0);
     for(int i=0; i<numImages; i++)
     {
-        auto row = i % numColumns;
+        auto row = i / numColumns;
         rowHeight[row] = qMax(rowHeight[row], images[i].height());
         rowWidth[row] = rowWidth[row] + images[i].width();
     }
@@ -87,12 +83,24 @@ auto main(int argc, char *argv[]) -> int
     // Generate sprite sheet
     QImage spriteSheet(spriteSheetWidth, spriteSheetHeight, QImage::Format_ARGB32);
     QPainter painter(&spriteSheet);
+    int xOffset = 0;
+    int yOffset = 0;
     for(int i=0; i<numImages; i++)
     {
-        auto row = i % numColumns;
+        auto row = i / numColumns;
+        auto col = i % numColumns;
 
-        painter.drawImage(0,0,images[i]);
+        if (col == 0)
+        {
+            xOffset = 0;
+        }
 
+        painter.drawImage(xOffset, yOffset, images[i]);
+        xOffset += images[i].width();
+        if (col == numColumns-1)
+        {
+            yOffset += rowHeight[row];
+        }
     }
     painter.end();
     spriteSheet.save("x.png");
