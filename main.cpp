@@ -19,147 +19,24 @@
  ***************************************************************************/
 
 #include <QCommandLineParser>
-#include <QFile>
-#include <QGuiApplication>
-#include <QIcon>
-#include <QLibraryInfo>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
-#include <QQmlProperty>
-#include <QQuickItem>
-#include <QSettings>
-#include <QTranslator>
-
-#if defined(Q_OS_ANDROID)
-#include <QtWebView/QtWebView>
-#else
-#include <QApplication>
-#include <kdsingleapplication.h>
-#endif
-
-#include "DemoRunner.h"
-#include "GlobalObject.h"
-#include "Librarian.h"
-#include "Settings.h"
-#include "dataManagement/DataManager.h"
-#include "dataManagement/SSLErrorHandler.h"
-#include "geomaps/Airspace.h"
-#include "geomaps/GeoMapProvider.h"
-#include "geomaps/WaypointLibrary.h"
-#include "navigation/Aircraft.h"
-#include "navigation/Clock.h"
-#include "navigation/Navigator.h"
-#include "platform/FileExchange_Abstract.h"
-#include "platform/Notifier_Abstract.h"
-#include "platform/PlatformAdaptor.h"
-#include "positioning/PositionProvider.h"
-#include "traffic/PasswordDB.h"
-#include "traffic/TrafficDataProvider.h"
-#include "traffic/TrafficFactor_WithPosition.h"
-#include "ui/ScaleQuickItem.h"
-#include "units/Angle.h"
-#include "units/Distance.h"
-#include "units/Speed.h"
-#include "units/Time.h"
-#include "units/Volume.h"
-#include "units/VolumeFlow.h"
-#include "weather/WeatherDataProvider.h"
-#include <chrono>
-
-using namespace std::chrono_literals;
+#include <QCoreApplication>
+#include <QDirIterator>
+#include <QImage>
+#include <QPainter>
 
 auto main(int argc, char *argv[]) -> int
 {
-    // It seems that MapBoxGL does not work well with threaded rendering, so we disallow that.
-    qputenv("QSG_RENDER_LOOP", "basic");
-
-    // Register types
-    qRegisterMetaType<Units::Angle>();
-    qRegisterMetaType<Units::Distance>();
-    qRegisterMetaType<Units::Speed>();
-    qRegisterMetaType<Units::Time>();
-    qRegisterMetaType<Units::Volume>();
-    qRegisterMetaType<Units::VolumeFlow>();
-    qRegisterMetaType<GeoMaps::Airspace>();
-    qRegisterMetaType<GeoMaps::Waypoint>();
-    qRegisterMetaType<Positioning::PositionInfo>();
-    qRegisterMetaType<Traffic::Warning>();
-    qRegisterMetaType<Platform::Notifier_Abstract::NotificationActions>();
-
-    qRegisterMetaType<Platform::FileExchange_Abstract::FileFunction>("Platform::FileExchange_Abstract::FileFunction");
-    qRegisterMetaType<Platform::Notifier_Abstract::NotificationTypes>("Platform::Notifier::Notifications");
-    qmlRegisterUncreatableType<DemoRunner>("enroute", 1, 0, "DemoRunner", QStringLiteral("DemoRunner objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Navigation::Aircraft>("enroute", 1, 0, "Aircraft", QStringLiteral("Aircraft objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Navigation::RemainingRouteInfo>("enroute", 1, 0, "RemainingRouteInfo", QStringLiteral("RemainingRouteInfo objects cannot be created in QML"));
-    qmlRegisterType<Navigation::Clock>("enroute", 1, 0, "Clock");
-    qmlRegisterUncreatableType<DataManagement::SSLErrorHandler>("enroute", 1, 0, "SSLErrorHandler", QStringLiteral("SSLErrorHandler objects cannot be created in QML"));
-    qmlRegisterUncreatableType<DataManagement::Downloadable_Abstract>("enroute", 1, 0, "Downloadable_Abstract", QStringLiteral("Downloadable_Abstract objects cannot be created in QML"));
-    qmlRegisterUncreatableType<DataManagement::Downloadable_SingleFile>("enroute", 1, 0, "Downloadable_SingleFile", QStringLiteral("Downloadable_SingleFile objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Librarian>("enroute", 1, 0, "Librarian", QStringLiteral("Librarian objects cannot be created in QML"));
-    qmlRegisterUncreatableType<GeoMaps::GeoMapProvider>("enroute", 1, 0, "GeoMapProvider", QStringLiteral("GeoMapProvider objects cannot be created in QML"));
-    qmlRegisterUncreatableType<GeoMaps::WaypointLibrary>("enroute", 1, 0, "WaypointLibrary", QStringLiteral("WaypointLibrary objects cannot be created in QML"));
-    qmlRegisterUncreatableType<DataManagement::DataManager>("enroute", 1, 0, "DataManager", QStringLiteral("DataManager objects cannot be created in QML"));
-    qmlRegisterType<Settings>("enroute", 1, 0, "GlobalSettings");
-    qmlRegisterUncreatableType<Platform::FileExchange_Abstract>("enroute", 1, 0, "FileExchange_Abstract", QStringLiteral("FileExchange_Abstract objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Platform::PlatformAdaptor_Abstract>("enroute", 1, 0, "PlatformAdaptor_Abstract", QStringLiteral("PlatformAdaptor_Abstract objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Navigation::Navigator>("enroute", 1, 0, "Navigator", QStringLiteral("Navigator objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Traffic::PasswordDB>("enroute", 1, 0, "PasswordDB", QStringLiteral("PasswordDB objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Traffic::TrafficDataProvider>("enroute", 1, 0, "TrafficDataProvider", QStringLiteral("TrafficDataProvider objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Platform::Notifier_Abstract>("enroute", 1, 0, "Notifier", QStringLiteral("Notifier objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Positioning::PositionProvider>("enroute", 1, 0, "PositionProvider", QStringLiteral("PositionProvider objects cannot be created in QML"));
-    qmlRegisterUncreatableType<Traffic::TrafficFactor_WithPosition>("enroute", 1, 0, "TrafficFactor_WithPosition", QStringLiteral("TrafficFactor_WithPosition objects cannot be created in QML"));
-    qmlRegisterType<Ui::ScaleQuickItem>("enroute", 1, 0, "Scale");
-    qmlRegisterUncreatableType<Weather::WeatherDataProvider>("enroute", 1, 0, "WeatherProvider", QStringLiteral("Weather::WeatherProvider objects cannot be created in QML"));
-    qmlRegisterType<Weather::Station>("enroute", 1, 0, "WeatherStation");
-
-    // Initialize web view on platforms where we use it
-#if defined(Q_OS_ANDROID)
-    QtWebView::initialize();
-#endif
-
-    // Set up application
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-#if defined(Q_OS_ANDROID)
-    QGuiApplication app(argc, argv);
-#else
-    QApplication app(argc, argv);
-#endif
+    QCoreApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("Akaflieg Freiburg"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("akaflieg_freiburg.de"));
-    QCoreApplication::setApplicationName(QStringLiteral("enroute flight navigation"));
-    QCoreApplication::setApplicationVersion(QStringLiteral(PROJECT_VERSION));
-    QGuiApplication::setWindowIcon(QIcon(":/icons/appIcon.png"));
-#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
-    QGuiApplication::setDesktopFileName(QStringLiteral("de.akaflieg_freiburg.enroute"));
-#endif
-
-    // Install translator
-    auto* enrouteTranslator = new QTranslator(&app);
-    if (enrouteTranslator->load(QStringLiteral(":enroute_%1.qm").arg(QLocale::system().name().left(2))))
-    {
-        QCoreApplication::installTranslator(enrouteTranslator);
-    }
-    else
-    {
-        delete enrouteTranslator;
-    }
-
-
-    // Workaround for crappy Hauwei and Samsung devices.
-    //
-    // On Huawei devices, set the environment variable "QT_ANDROID_NO_EXIT_CALL", which
-    // prevents an exit() call, and thereby prevents a crash on these devices. Same problem on Samsung Galaxy S21 devices with Android 12.
-    qputenv("QT_ANDROID_NO_EXIT_CALL", "1");
-
+    QCoreApplication::setApplicationName(QStringLiteral("spriteGenerator"));
 
     // Command line parsing
     QCommandLineParser parser;
-    parser.setApplicationDescription(QCoreApplication::translate("main", "Enroute Flight Navigation is a free nagivation app for VFR pilots,\ndeveloped as a project of Akaflieg Freiburg."));
+    parser.setApplicationDescription(QCoreApplication::translate("main", "Generates sprite sheets for use with MapBox maps"));
     parser.addHelpOption();
     parser.addVersionOption();
-    QCommandLineOption screenshotOption(QStringLiteral("s"), QCoreApplication::translate("main", "Run simulator and generate screenshots for manual"));
-    parser.addOption(screenshotOption);
-    parser.addPositionalArgument(QStringLiteral("[fileName]"), QCoreApplication::translate("main", "File to import."));
+    parser.addPositionalArgument(QStringLiteral("[directory]"), QCoreApplication::translate("main", "Directory with SVG files."));
     parser.process(app);
     auto positionalArguments = parser.positionalArguments();
     if (positionalArguments.length() > 1)
@@ -167,52 +44,58 @@ auto main(int argc, char *argv[]) -> int
         parser.showHelp();
     }
 
-#if !defined(Q_OS_ANDROID)
-    // Single application on desktops
-    KDSingleApplication kdsingleapp;
-    if (!kdsingleapp.isPrimaryInstance())
+    // Find all relevant SVG files
+    QVector<QImage> images;
+    foreach(auto directory, positionalArguments)
     {
-        if (positionalArguments.length() > 0)
+        QDirIterator fileIterator(directory);
+        while (fileIterator.hasNext())
         {
-            kdsingleapp.sendMessage(positionalArguments[0].toUtf8());
+            fileIterator.next();
+            if (fileIterator.fileName().endsWith("svg", Qt::CaseInsensitive))
+            {
+                qDebug() << "Loading SVG file" << fileIterator.filePath();
+                images << QImage(fileIterator.filePath());
+            }
         }
-        else
-        {
-            kdsingleapp.sendMessage(QByteArray());
-        }
-        return 0;
     }
-#endif
 
-    // Create mobile platform adaptor. We do this before creating the application engine because this also asks for permissions
-    GlobalObject::platformAdaptor()->requestPermissionsSync();
-    GlobalObject::platformAdaptor()->disableScreenSaver();
-    if (positionalArguments.length() == 1)
+    // Compute number of columns
+    auto numImages  = images.length();
+    auto numColumns = qCeil( sqrt(numImages) );
+    auto numRows    = (numImages+numColumns-1)/numColumns;
+    qDebug() << QString("Arranging %1 items in %2 rows and %3 columns.").arg(numImages).arg(numRows).arg(numColumns);
+
+    // Compute Size of sprite sheet
+    QVector<int> rowHeight(numRows, 0);
+    QVector<int> rowWidth(numRows, 0);
+    for(int i=0; i<numImages; i++)
     {
-        GlobalObject::fileExchange()->processFileOpenRequest(positionalArguments[0]);
+        auto row = i % numColumns;
+        rowHeight[row] = qMax(rowHeight[row], images[i].height());
+        rowWidth[row] = rowWidth[row] + images[i].width();
     }
-#if !defined(Q_OS_ANDROID)
-    QObject::connect(&kdsingleapp, SIGNAL(messageReceived(QByteArray)), GlobalObject::fileExchange(), SLOT(processFileOpenRequest(QByteArray)));
-#endif
-
-    /*
-     * Set up ApplicationEngine for QML
-     */
-    QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("angle"), QVariant::fromValue(Units::Angle()) );
-    engine.rootContext()->setContextProperty(QStringLiteral("distance"), QVariant::fromValue(Units::Distance()) );
-    engine.rootContext()->setContextProperty(QStringLiteral("manual_location"), MANUAL_LOCATION );
-    engine.rootContext()->setContextProperty(QStringLiteral("global"), new GlobalObject(&engine) );
-    engine.rootContext()->setContextProperty(QStringLiteral("leg"), QVariant::fromValue(Navigation::Leg()) );
-    engine.rootContext()->setContextProperty(QStringLiteral("speed"), QVariant::fromValue(Units::Speed()) );
-    engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
-
-    if (parser.isSet(screenshotOption))
+    int spriteSheetWidth = 0;
+    int spriteSheetHeight = 0;
+    for(int i=0; i<numRows; i++)
     {
-        GlobalObject::demoRunner()->setEngine(&engine);
-        QTimer::singleShot(1s, GlobalObject::demoRunner(), &DemoRunner::run);
+        spriteSheetWidth = qMax(spriteSheetWidth, rowWidth[i]);
+        spriteSheetHeight = spriteSheetHeight + rowHeight[i];
     }
+    qDebug() << QString("Generating sprite sheet with (%1,%2)").arg(spriteSheetHeight).arg(spriteSheetWidth);
 
-    // Load GUI and enter event loop
-    return QGuiApplication::exec();
+    // Generate sprite sheet
+    QImage spriteSheet(spriteSheetWidth, spriteSheetHeight, QImage::Format_ARGB32);
+    QPainter painter(&spriteSheet);
+    for(int i=0; i<numImages; i++)
+    {
+        auto row = i % numColumns;
+
+        painter.drawImage(0,0,images[i]);
+
+    }
+    painter.end();
+    spriteSheet.save("x.png");
+
+    return 0;
 }
