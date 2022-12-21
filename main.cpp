@@ -45,19 +45,11 @@ auto main(int argc, char *argv[]) -> int
     // Find all relevant SVG files
     QVector<QImage> images;
     QVector<QString> names;
-    foreach(auto directory, positionalArguments)
+    foreach(auto fileName, positionalArguments)
     {
-        QDirIterator fileIterator(directory);
-        while (fileIterator.hasNext())
-        {
-            fileIterator.next();
-            if (fileIterator.fileName().endsWith("svg", Qt::CaseInsensitive))
-            {
-                qDebug() << "Loading SVG file" << fileIterator.filePath();
-                images << QImage(fileIterator.filePath());
-                names << fileIterator.fileName().section(".", 0, -2);
-            }
-        }
+        qDebug() << "Loading file" << fileName;
+        images << QImage(fileName);
+        names << fileName.section(".", 0, -2).section("/", -1);
     }
 
     // Compute number of columns
