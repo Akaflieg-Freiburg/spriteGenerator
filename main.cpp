@@ -29,70 +29,109 @@
 
 auto main(int argc, char *argv[]) -> int
 {
+    //
     // Application setup
+    //
     QCoreApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("Akaflieg Freiburg"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("akaflieg_freiburg.de"));
     QCoreApplication::setApplicationName(QStringLiteral("spriteGenerator"));
     QCoreApplication::setApplicationVersion(QStringLiteral(VERSION));
 
+    //
     // Command line parsing
-    QCommandLineParser parser;
-    parser.setApplicationDescription("Generates sprite sheets for use with MapBox map styles");
-    parser.addHelpOption();
-    parser.addVersionOption();
-    parser.addPositionalArgument(QStringLiteral("files"), "image files");
-    parser.process(app);
-    auto positionalArguments = parser.positionalArguments();
+    //
+    QStringList positionalArguments;
+    int pixelRatio {1};
+    {
+        QCommandLineOption pixelRatioOption(
+                    QStringLiteral("pixelRatio"),
+                    QStringLiteral("Pixel ratio, to be stored in the JSON file. Defaults to value 1."),
+                    QStringLiteral("integer"),
+                    QStringLiteral("1"));
 
+        QCommandLineParser parser;
+        parser.setApplicationDescription(
+                    QStringLiteral("Generates sprite sheets for use with MapBox/MapLibre map styles.\nSee https://github.com/Akaflieg-Freiburg/spriteGenerator for more information."));
+        parser.addHelpOption();
+        parser.addVersionOption();
+        parser.addOption(pixelRatioOption);
+        parser.addPositionalArgument(
+                    QStringLiteral("files"),
+                    QStringLiteral("image files"));
 
-    // Find all relevant SVG files
+        parser.process(app);
+
+        bool ok;
+        pixelRatio = parser.value(pixelRatioOption).toInt(&ok);
+        positionalArguments = parser.positionalArguments();
+        if (positionalArguments.isEmpty() && !ok)
+        {
+            parser.showHelp();
+        }
+    }
+
+    //
+    // Load all graphic files
+    //
     QVector<QImage> images;
-    QVector<QString> names;
-    foreach(auto fileName, positionalArguments)
     {
-        qDebug() << "Loading file" << fileName;
-        images << QImage(fileName);
-        names << fileName.section(QStringLiteral("."), 0, -2).section(QStringLiteral("/"), -1);
+        foreach(auto fileName, positionalArguments)
+    {
+        QImage image;
+        if (!image.load(fileName))
+        {
+            qCritical() << QStringLiteral("Error loading image file %1. Exiting.").arg(fileName);
+            exit(0);
+        }
+        image.setText(QStringLiteral("name"), fileName.section(QStringLiteral("."), 0, -2).section(QStringLiteral("/"), -1));
+
+        images << image;
+    }
+        if (images.empty())
+        {
+            qCritical() << "No images loaded. Exiting.";
+            exit(0);
+        }
     }
 
-    // Compute number of columns
-    auto numImages  = images.length();
-    if (numImages == 0)
-    {
-        qCritical() << "No images loaded. Exiting.";
-        exit(0);
-    }
+    //
+    // Compute number of columns and number of rows, and size of sprite sheet
+    //
+    auto numImages  = images.size();
     auto numColumns = qCeil( sqrt( (double)numImages ) );
     auto numRows    = (numImages+numColumns-1)/numColumns;
-    qDebug() << QStringLiteral("Arranging %1 items in %2 rows and %3 columns.").arg(numImages).arg(numRows).arg(numColumns);
-
-    // Compute Size of sprite sheet
-    QVector<int> rowHeight(numRows, 0);
-    QVector<int> rowWidth(numRows, 0);
-    for(int i=0; i<numImages; i++)
-    {
-        auto row = i / numColumns;
-        rowHeight[row] = qMax(rowHeight[row], images[i].height());
-        rowWidth[row] = rowWidth[row] + images[i].width();
-    }
     int spriteSheetWidth = 0;
     int spriteSheetHeight = 0;
-    for(int i=0; i<numRows; i++)
     {
-        spriteSheetWidth = qMax(spriteSheetWidth, rowWidth[i]);
-        spriteSheetHeight = spriteSheetHeight + rowHeight[i];
+        QVector<int> rowHeight(numRows, 0);
+        QVector<int> rowWidth(numRows, 0);
+        for(int i=0; i<numImages; i++)
+        {
+            auto row = i / numColumns;
+            rowHeight[row] = qMax(rowHeight[row], images[i].height());
+            rowWidth[row] = rowWidth[row] + images[i].width();
+        }
+        for(int i=0; i<numRows; i++)
+        {
+            spriteSheetWidth = qMax(spriteSheetWidth, rowWidth[i]);
+            spriteSheetHeight = spriteSheetHeight + rowHeight[i];
+        }
     }
-    qDebug() << QStringLiteral("Generating sprite sheet with (%1,%2)").arg(spriteSheetHeight).arg(spriteSheetWidth);
 
-    // Generate sprite sheet
+
+    //
+    // Generate sprite sheet and JSON
+    //
     QImage spriteSheet(spriteSheetWidth, spriteSheetHeight, QImage::Format_ARGB32);
+    QJsonObject obj;
     QPainter painter(&spriteSheet);
     int xOffset = 0;
     int yOffset = 0;
-    QJsonObject obj;
     for(int i=0; i<numImages; i++)
     {
+        auto image = images[i];
+
         auto row = i / numColumns;
         auto col = i % numColumns;
 
@@ -101,16 +140,16 @@ auto main(int argc, char *argv[]) -> int
             xOffset = 0;
         }
 
-        painter.drawImage(xOffset, yOffset, images[i]);
+        painter.drawImage(xOffset, yOffset, image);
         QJsonObject jsonObj;
         jsonObj.insert(QStringLiteral("width"), images[i].width());
         jsonObj.insert(QStringLiteral("height"), images[i].height());
         jsonObj.insert(QStringLiteral("x"), xOffset);
         jsonObj.insert(QStringLiteral("y"), yOffset);
-        jsonObj.insert(QStringLiteral("pixelRatio"), 1);
-        obj.insert(names[i], jsonObj);
+        jsonObj.insert(QStringLiteral("pixelRatio"), pixelRatio);
+        obj.insert(image.text(QStringLiteral("name")), jsonObj);
 
-        xOffset += images[i].width();
+        xOffset += image.width();
         if (col == numColumns-1)
         {
             yOffset += rowHeight[row];
