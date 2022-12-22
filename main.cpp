@@ -77,17 +77,17 @@ auto main(int argc, char *argv[]) -> int
     QVector<QImage> images;
     {
         foreach(auto fileName, positionalArguments)
-    {
-        QImage image;
-        if (!image.load(fileName))
         {
-            qCritical() << QStringLiteral("Error loading image file %1. Exiting.").arg(fileName);
-            exit(0);
-        }
-        image.setText(QStringLiteral("name"), fileName.section(QStringLiteral("."), 0, -2).section(QStringLiteral("/"), -1));
+            QImage image;
+            if (!image.load(fileName))
+            {
+                qCritical() << QStringLiteral("Error loading image file %1. Exiting.").arg(fileName);
+                exit(0);
+            }
+            image.setText(QStringLiteral("name"), fileName.section(QStringLiteral("."), 0, -2).section(QStringLiteral("/"), -1));
 
-        images << image;
-    }
+            images << image;
+        }
         if (images.empty())
         {
             qCritical() << "No images loaded. Exiting.";
@@ -103,8 +103,8 @@ auto main(int argc, char *argv[]) -> int
     auto numRows    = (numImages+numColumns-1)/numColumns;
     int spriteSheetWidth = 0;
     int spriteSheetHeight = 0;
+    QVector<int> rowHeight(numRows, 0);
     {
-        QVector<int> rowHeight(numRows, 0);
         QVector<int> rowWidth(numRows, 0);
         for(int i=0; i<numImages; i++)
         {
@@ -125,47 +125,53 @@ auto main(int argc, char *argv[]) -> int
     //
     QImage spriteSheet(spriteSheetWidth, spriteSheetHeight, QImage::Format_ARGB32);
     QJsonObject obj;
-    QPainter painter(&spriteSheet);
-    int xOffset = 0;
-    int yOffset = 0;
-    for(int i=0; i<numImages; i++)
     {
-        auto image = images[i];
-
-        auto row = i / numColumns;
-        auto col = i % numColumns;
-
-        if (col == 0)
+        QPainter painter(&spriteSheet);
+        int xOffset = 0;
+        int yOffset = 0;
+        for(int i=0; i<numImages; i++)
         {
-            xOffset = 0;
+            auto image = images[i];
+
+            auto row = i / numColumns;
+            auto col = i % numColumns;
+
+            if (col == 0)
+            {
+                xOffset = 0;
+            }
+
+            painter.drawImage(xOffset, yOffset, image);
+            QJsonObject jsonObj;
+            jsonObj.insert(QStringLiteral("width"), images[i].width());
+            jsonObj.insert(QStringLiteral("height"), images[i].height());
+            jsonObj.insert(QStringLiteral("x"), xOffset);
+            jsonObj.insert(QStringLiteral("y"), yOffset);
+            jsonObj.insert(QStringLiteral("pixelRatio"), pixelRatio);
+            obj.insert(image.text(QStringLiteral("name")), jsonObj);
+
+            xOffset += image.width();
+            if (col == numColumns-1)
+            {
+                yOffset += rowHeight[row];
+            }
+
         }
-
-        painter.drawImage(xOffset, yOffset, image);
-        QJsonObject jsonObj;
-        jsonObj.insert(QStringLiteral("width"), images[i].width());
-        jsonObj.insert(QStringLiteral("height"), images[i].height());
-        jsonObj.insert(QStringLiteral("x"), xOffset);
-        jsonObj.insert(QStringLiteral("y"), yOffset);
-        jsonObj.insert(QStringLiteral("pixelRatio"), pixelRatio);
-        obj.insert(image.text(QStringLiteral("name")), jsonObj);
-
-        xOffset += image.width();
-        if (col == numColumns-1)
-        {
-            yOffset += rowHeight[row];
-        }
-
+        painter.end();
     }
-    painter.end();
-    spriteSheet.save(QStringLiteral("x.png"));
 
+
+    //
+    // Save results
+    //
+    spriteSheet.save(QStringLiteral("sprite.png"));
 
     QJsonDocument doc;
     doc.setObject(obj);
-
-    QFile file(QStringLiteral("x.json"));
+    QFile file(QStringLiteral("sprite.json"));
     file.open(QFile::WriteOnly);
     file.write(doc.toJson());
 
+    qWarning() << "Done. Results saved to files sprite.png and sprite.json.";
     return 0;
 }
