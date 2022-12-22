@@ -20,27 +20,31 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDirIterator>
 #include <QImage>
-#include <QPainter>
-#include <QJsonObject>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QPainter>
 
 auto main(int argc, char *argv[]) -> int
 {
+    // Application setup
     QCoreApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("Akaflieg Freiburg"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("akaflieg_freiburg.de"));
     QCoreApplication::setApplicationName(QStringLiteral("spriteGenerator"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(VERSION));
 
     // Command line parsing
     QCommandLineParser parser;
-    parser.setApplicationDescription(QCoreApplication::translate("main", "Generates sprite sheets for use with MapBox maps"));
+    parser.setApplicationDescription("Generates sprite sheets for use with MapBox map styles");
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument(QStringLiteral("[directory]"), QCoreApplication::translate("main", "Directory with SVG files."));
+    parser.addPositionalArgument(QStringLiteral("files"), "image files");
     parser.process(app);
     auto positionalArguments = parser.positionalArguments();
+
 
     // Find all relevant SVG files
     QVector<QImage> images;
@@ -49,14 +53,19 @@ auto main(int argc, char *argv[]) -> int
     {
         qDebug() << "Loading file" << fileName;
         images << QImage(fileName);
-        names << fileName.section(".", 0, -2).section("/", -1);
+        names << fileName.section(QStringLiteral("."), 0, -2).section(QStringLiteral("/"), -1);
     }
 
     // Compute number of columns
     auto numImages  = images.length();
-    auto numColumns = qCeil( sqrt(numImages) );
+    if (numImages == 0)
+    {
+        qCritical() << "No images loaded. Exiting.";
+        exit(0);
+    }
+    auto numColumns = qCeil( sqrt( (double)numImages ) );
     auto numRows    = (numImages+numColumns-1)/numColumns;
-    qDebug() << QString("Arranging %1 items in %2 rows and %3 columns.").arg(numImages).arg(numRows).arg(numColumns);
+    qDebug() << QStringLiteral("Arranging %1 items in %2 rows and %3 columns.").arg(numImages).arg(numRows).arg(numColumns);
 
     // Compute Size of sprite sheet
     QVector<int> rowHeight(numRows, 0);
@@ -74,7 +83,7 @@ auto main(int argc, char *argv[]) -> int
         spriteSheetWidth = qMax(spriteSheetWidth, rowWidth[i]);
         spriteSheetHeight = spriteSheetHeight + rowHeight[i];
     }
-    qDebug() << QString("Generating sprite sheet with (%1,%2)").arg(spriteSheetHeight).arg(spriteSheetWidth);
+    qDebug() << QStringLiteral("Generating sprite sheet with (%1,%2)").arg(spriteSheetHeight).arg(spriteSheetWidth);
 
     // Generate sprite sheet
     QImage spriteSheet(spriteSheetWidth, spriteSheetHeight, QImage::Format_ARGB32);
@@ -109,13 +118,13 @@ auto main(int argc, char *argv[]) -> int
 
     }
     painter.end();
-    spriteSheet.save("x.png");
+    spriteSheet.save(QStringLiteral("x.png"));
 
 
     QJsonDocument doc;
     doc.setObject(obj);
 
-    QFile file("x.json");
+    QFile file(QStringLiteral("x.json"));
     file.open(QFile::WriteOnly);
     file.write(doc.toJson());
 
